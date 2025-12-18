@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="style.css?v=<?php echo time(); ?>">
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 </head>
 <body>
@@ -112,7 +113,7 @@
                 <!-- DASHBOARD -->
                 <div id="dashboard-screen" class="screen-view" style="display: none;">
                     <div class="stats-wrapper">
-                        <div class="stat-box">
+                        <div class="stat-box" onclick="switchScreen('sales');show_daily_Sales()"  style="cursor: pointer;">
                             <h3>Today's Sales</h3>
                             <div class="stat-number" id="today_sales">₱0.00</div>
                             <div class="stat-desc">Total Revenue</div>
@@ -138,6 +139,22 @@
                         <h2 style="margin-bottom: 1rem; color: #000000;">Recent Transactions</h2>
                         <div id="recent_transactions"></div>
                     </div>
+
+                    <!-- CHART CARD -->
+                            <div class="chart-card">
+                            <div class="chart-header">
+                                <h2 style="margin-bottom: 1rem;margin-left: 1rem;color: #000000;">Sales Overview</h2>
+
+                                <select id="salesFilter" onchange="updateSalesChart()" >
+                                <option value="day" selected>Today</option>
+                                <option value="week">This Week</option>
+                                <option value="month">This Month</option>
+                                <option value="year">This Year</option>
+                                </select>
+                            </div>
+
+                            <canvas id="salesChart"></canvas>
+                            </div>
                 </div>
 
                 <!-- SALES REPORT -->
@@ -145,10 +162,15 @@
                     <div class="section-header">
                         <h2 style="color: #000000;">Sales Report</h2>
                         <p style="color: #666666;">Complete transaction history and analytics</p>
-                        <button class="add-btn" onclick="">Today Sales</button>
+                        <button class="add-btn" onclick="show_daily_Sales()" id="today-sales-btn">Today Sales</button>
+                        <button class="add-btn" onclick="show_product_Sales()" id="today-sales-btn">Product Reports</button>
                     </div>
-                     
-                    <div class="table-wrapper">
+                      
+                    <div class="table-wrapper" id="salesDiv" style="display: block;">
+                        <div style="display: flex;">
+                           <h2 style="margin-bottom: 1rem;margin-right:1rem">Today Sales Total: </h2>
+                           <h2 id="today-sales-total">00.00</h2>
+                        </div>
                             <table class="data-table">
                                 <thead>
                                     <tr>
@@ -159,11 +181,89 @@
                                     </tr>
                                 </thead>
                                 <tbody id="sales_list"></tbody>
+                                <!-- <td><h3 style="margin-bottom: 1rem;margin-right:1rem">Today Sales Total: </h3></td>
+                                <td></td>   
+                                <td></td>
+                                <td> <h3 id="today-sales-total">00.00</h3></td> -->
                             </table> 
                     </div>
-               
-                </div>
+                        
+                        <div class="table-wrapper" id="productDiv" style="display: none;">
+                             <div style="display: flex;">
+                                <h2 style="margin-bottom: 1rem;margin-right:1rem">Product Reports: </h2>
+                            </div>
+                            <div class="input-group" style="width: 100%;display:flex">
+                                <input
+                                    type="text"
+                                    id="search_product_name"
+                                    placeholder="Search inventory name..."
+                                    oninput="handleSearch(this)"
+                                    >
+
+                                     <select id="product_filter" onchange="applyProductFilter()">
+                                        <option selected hidden>Select Category</option>
+                                        <option value="">All Categories</option>
+                                        <option value="Salad">Salad</option>
+                                        <option value="Snacks">Snacks</option>
+                                        <option value="Pasta">Pasta</option>
+                                        <option value="Sandwich">Sandwich</option>
+                                        <option value="Cake">Cake</option>
+                                        <option value="Coffee">Coffee</option>
+                                        <option value="Frappe">Frappe</option>
+                                        <option value="Non-Coffee">Non-Coffee</option>
+                                        <option value="Tea">Tea</option>
+                                        <option value="Silog Meals">Silog Meals</option>
+                                    </select>
+                                </div>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Item Name</th>
+                                        <th>Category</th>
+                                        <th>Price (₱)</th>
+                                        <th>Reports</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="product_report"></tbody>
+                            </table> 
+                    </div>
+            </div>
+                        
                 
+     <!-- ====================== PRODUCT REPORT MODAL ====================== -->
+    <div id="product_report_modal" class="popup">
+        <div class="popup-box-archived">
+            <div class="popup-header">
+                <h2 id="popup_titles"></h2>
+                <span class="close-btn" onclick="hideModalProductReport()">&times;</span>
+            </div>
+                
+                   <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Price</th>
+                                <th>Sales</th>
+                                <th>Sold</th>
+                                <th>Range Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="product-reports"></tbody>
+                    </table>
+                         <!-- CHART CARD -->
+                            <div class="chart-card">
+                            <div class="chart-header">
+                                <h2 style="margin-bottom: 1rem;margin-left: 1rem;color: #000000;">Product Sales Overview</h2>
+                            </div>
+
+                          <canvas id="productLineChart" height="80"></canvas>
+                            </div>
+                </div>
+            </div>
+             
+        </div>
+    
                 <!-- INVENTORY MANAGEMENT -->
                 <div id="inventory-screen" class="screen-view" style="display: none;">
                     <div class="section-header">
@@ -175,7 +275,14 @@
                         <button class="add-btn" onclick="showAddModalArchived()">Archived</button>
                     </div>
 
-                                <div class="input-group" style="width: 25%;">
+                                <div class="input-group" style="width: 100%;display:flex">
+                                <input
+                                    type="text"
+                                    id="search_inventory_name"
+                                    placeholder="Search inventory name..."
+                                    oninput="handleSearch(this)"
+                                    >
+
                                      <select id="category_filter" onchange="applyCategoryFilter()">
                                         <option selected hidden>Select Category</option>
                                         <option value="">All Categories</option>
@@ -188,8 +295,10 @@
                                         <option value="Frappe">Frappe</option>
                                         <option value="Non-Coffee">Non-Coffee</option>
                                         <option value="Tea">Tea</option>
+                                        <option value="Silog Meals">Silog Meals</option>
                                     </select>
                                 </div>
+
                                    
                 <div class="table-wrapper">
                     <table class="data-table">
@@ -252,6 +361,7 @@
                                         <button class="filter-btn" onclick="filterProducts('Frappuccino', this)">Frappe</button>
                                         <button class="filter-btn" onclick="filterProducts('Non-Coffee', this)">Non-Coffee</button>
                                         <button class="filter-btn" onclick="filterProducts('Tea', this)">Tea</button>
+                                        <button class="filter-btn" onclick="filterProducts('Silog Meals', this)">Silog Meals</button>
                                     </div>
 
                                     <!-- Search Box -->
@@ -343,9 +453,10 @@
                         <option value="Cake">Cake</option>
                         <option value="Coffee">Coffee</option>
                         <option value="Frappuccino">Frappuccino</option>
-                         <option value="Frappe">Frappe</option>
+                        <option value="Frappe">Frappe</option>
                         <option value="Non-Coffee">Non-Coffee</option>
                         <option value="Tea">Tea</option>
+                        <option value="Silog Meals">Silog Meals</option>
                     </select>
                 </div>
                 <div class="input-group">
@@ -364,19 +475,24 @@
         </div>
     </div>
 
-     <!-- ====================== ITEM ADD / EDIT MODAL ====================== -->
+     <!-- ====================== ARCHIVED MODAL ====================== -->
     <div id="archived_modal" class="popup">
         <div class="popup-box-archived">
             <div class="popup-header">
                 <h2 id="popup_titles">Add New Item</h2>
                 <span class="close-btn" onclick="hideModalArchived()">&times;</span>
             </div>
-                <div class="input-group" style="width: 25%;">
+                <div class="input-group" style="width: 100%;display:flex" >
+                       <input
+                                        type="text"
+                                        id="archived_search_box"
+                                        placeholder="Search archived item by name..."
+                                        oninput="handleSearch(this)"
+                                        >
                            <select id="archived_category_filter" onchange="applyArchivedCategoryFilter()">
                                 <option value="">All Categories</option>
                             </select>
-
-                                </div>
+                        </div>
             <div class="table-wrapper-archived">
                   <table class="data-table">
                         <thead>
@@ -489,6 +605,7 @@
 
 
     <!-- ✅ Linked JS -->
+     
      <script>
 /* Immediately check server session and restore UI */
 fetch('get_session.php?t=' + new Date().getTime())
@@ -538,6 +655,8 @@ fetch('get_session.php?t=' + new Date().getTime())
   });
 </script>
 
+
     <script src="style.js?v=<?php echo time(); ?>"></script>
+   
 </body>
 </html>

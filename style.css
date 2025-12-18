@@ -3248,3 +3248,33 @@ body {
     font-size: 0.75rem;
   }
 }
+
+/* Bar Chart Design */
+.chart-card {
+  border: 2px solid #000;
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
+  margin-top: 25px;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.chart-header select {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 2px solid #000;
+  font-weight: 600;
+  cursor: pointer;
+}

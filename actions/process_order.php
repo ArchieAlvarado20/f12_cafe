@@ -45,15 +45,59 @@ try {
              throw new Exception("Failed to update stock for item ID: " . $id);
         }
     }
+
+
     $updateStmt->close();
 
-    $conn->commit();
-    echo json_encode(['success' => true, 'message' => 'Order processed and saved to database']);
+            // INSERT INTO product_sales_report (PER ITEM)
+            $reportStmt = $conn->prepare("
+                INSERT INTO product_sales_report
+                (item_id, item_name, qty, price, subtotal)
+                VALUES (?, ?, ?, ?, ?)
+            ");
 
-} catch (Exception $e) {
-    $conn->rollback();
-    echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
-}
+            $priceStmt = $conn->prepare("
+                SELECT price FROM inventory WHERE id = ?
+            ");
 
-$conn->close();
-?>
+            foreach ($items as $item) {
+
+                // get price from inventory
+                $priceStmt->bind_param("i", $item['id']);
+                $priceStmt->execute();
+                $priceRow = $priceStmt->get_result()->fetch_assoc();
+
+                if (!$priceRow) {
+                    throw new Exception("Item not found in inventory ID: " . $item['id']);
+                }
+
+                $price = $priceRow['price'];
+                $subtotal = $price * $item['qty'];
+
+                $reportStmt->bind_param(
+                    "isidd",
+                    $item['id'], 
+                    $item['name'],
+                    $item['qty'],
+                    $price,
+                    $subtotal
+                );
+
+                if (!$reportStmt->execute()) {
+                    throw new Exception("Failed to save product report");
+                }
+            }
+
+            $priceStmt->close();
+            $reportStmt->close();
+
+                $conn->commit();
+                echo json_encode(['success' => true, 'message' => 'Order processed and saved to database']);
+
+            } catch (Exception $e) {
+                $conn->rollback();
+                echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+            }
+
+            $conn->close();
+            ?>

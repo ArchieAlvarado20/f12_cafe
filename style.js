@@ -10,7 +10,12 @@ let allInventoryItems = [];
 let archivedItems = [];
 let archivedSelectedCategory = "";
 
+let productItems = [];
+let productSelectedCategory = "";
+
 let storedPayment = 0;
+
+let productLineChart = null;
 
 // Product icons
 const icons = {
@@ -128,14 +133,18 @@ function fetchSalesHistory() {
   return fetch("actions/get_sales.php?t=" + new Date().getTime())
     .then((response) => response.json())
     .then((data) => {
-      // Map database columns to the format the JS expects
-      transactionHistory = data.map((row) => ({
-        id: row.id,
-        date: row.date_time,
-        items: row.items, // This is now a string from the DB
-        total: row.total,
-        payment: row.payment,
-      }));
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+      transactionHistory = data
+        .filter((row) => row.date_time.startsWith(today))
+        .map((row) => ({
+          id: row.id,
+          date: row.date_time,
+          items: row.items,
+          total: row.total,
+          payment: row.payment,
+        }));
+
       return true;
     })
     .catch((error) => {
@@ -280,9 +289,18 @@ function doLogout() {
 function loadDashboard() {
   if (!loggedInUser || loggedInUser.role !== "Owner") return;
 
-  // Calculate stats from transactionHistory
-  const totalRevenue = transactionHistory.reduce((sum, t) => sum + t.total, 0);
-  const orderCount = transactionHistory.length;
+  // 🇵🇭 PH TIME
+  const nowPH = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })
+  );
+  const today = nowPH.toISOString().slice(0, 10);
+
+  const todayTransactions = transactionHistory.filter((t) =>
+    t.date.startsWith(today)
+  );
+
+  const totalRevenue = todayTransactions.reduce((sum, t) => sum + t.total, 0);
+  const orderCount = todayTransactions.length;
   const averageValue = orderCount > 0 ? totalRevenue / orderCount : 0;
   const lowStockCount = getAllItems().filter(
     (item) => item.stock <= 5 && item.stock > 0
@@ -291,6 +309,12 @@ function loadDashboard() {
   document.getElementById("today_sales").textContent = `₱${totalRevenue.toFixed(
     2
   )}`;
+
+  //for daily sales report total
+  document.getElementById(
+    "today-sales-total"
+  ).textContent = `₱${totalRevenue.toFixed(2)}`;
+
   document.getElementById("total_orders").textContent = orderCount;
   document.getElementById("avg_order").textContent = `₱${averageValue.toFixed(
     2
@@ -298,37 +322,35 @@ function loadDashboard() {
   document.getElementById("low_stock_count").textContent = lowStockCount;
 
   const recentDiv = document.getElementById("recent_transactions");
-  if (transactionHistory.length === 0) {
+
+  if (todayTransactions.length === 0) {
     recentDiv.innerHTML =
-      '<p class="placeholder-text">No transactions found in database.</p>';
-  } else {
-    // Take top 5 (already sorted by newest in fetchSalesHistory PHP)
-    const recent = transactionHistory.slice(0, 5);
-    recentDiv.innerHTML = recent
-      .map(
-        (t) => `
-            <div style="padding: 1rem; border-bottom: 1px solid #eee;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong style="color: #000000;">${t.date}</strong>
-                        <p style="color: #666; font-size: 0.9rem; margin-top: 0.3rem;">
-                            ${t.items} 
-                        </p>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 1.3rem; font-weight: 700; color: #000000;">₱${t.total.toFixed(
-                          2
-                        )}</div>
-                        <div style="color: #666; font-size: 0.85rem;">${
-                          t.payment
-                        }</div>
-                    </div>
-                </div>
-            </div>
-        `
-      )
-      .join("");
+      '<p class="placeholder-text">No transactions today.</p>';
+    return;
   }
+
+  const recent = todayTransactions.slice(0, 5);
+
+  recentDiv.innerHTML = recent
+    .map(
+      (t) => `
+    <div style="padding: 1rem; border-bottom: 1px solid #eee;">
+      <div style="display:flex; justify-content:space-between;">
+        <div>
+          <strong>${t.date}</strong>
+          <p style="font-size:0.9rem; color:#666;">${t.items}</p>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-weight:700;">₱${t.total.toFixed(2)}</div>
+          <div style="font-size:0.85rem; color:#666;">${t.payment}</div>
+        </div>
+      </div>
+    </div>
+  `
+    )
+    .join("");
+
+  return totalRevenue;
 }
 
 function loadSales() {
@@ -376,6 +398,14 @@ function applyCategoryFilter() {
   loadInventory();
 }
 
+// filter inventory by name
+let inventorySearchText = "";
+
+function searchInventoryByName(text) {
+  inventorySearchText = text;
+  loadInventory();
+}
+
 function loadInventory() {
   if (!loggedInUser || loggedInUser.role !== "Owner") return;
 
@@ -384,15 +414,22 @@ function loadInventory() {
 
   let allItems = allInventoryItems;
 
-  if (!allInventoryItems || allInventoryItems.length === 0)
-    allItems.sort((a, b) => b.id - a.id);
+  if (allItems && allItems.length > 0) {
+    allItems = [...allItems].sort((a, b) => b.id - a.id);
+  }
 
-  // 🔥 APPLY FILTER HERE
+  // ✅ FILTER BY CATEGORY
   if (selectedCategory !== "") {
     allItems = allItems.filter((item) => item.category === selectedCategory);
   }
 
-  // ❗ IF NO DATA — SHOW EMPTY ROW MESSAGE
+  // ✅ FILTER BY NAME (SEARCH)
+  if (inventorySearchText !== "") {
+    allItems = allItems.filter((item) =>
+      item.name.toLowerCase().includes(inventorySearchText)
+    );
+  }
+
   if (allItems.length === 0) {
     table.innerHTML = `
       <tr>
@@ -410,23 +447,23 @@ function loadInventory() {
     const noStock = item.stock <= 0;
 
     row.innerHTML = `
-            <td>${item.name}</td>
-            <td>${item.category}</td>
-            <td>₱${item.price.toFixed(2)}</td>
-            <td class="${
-              lowStock || noStock ? "stock-warning" : ""
-            }" style="font-weight: 700;">
-                ${item.stock} ${lowStock ? "⚠️" : ""} ${noStock ? "❌" : ""}
-            </td>
-            <td>
-                <button class="edit-btn" onclick="openEditModal(${
-                  item.id
-                })">Edit</button>
-                <button class="delete-btn" onclick="removeItem(${
-                  item.id
-                })">Archived</button>
-            </td>
-        `;
+      <td>${item.name}</td>
+      <td>${item.category}</td>
+      <td>₱${item.price.toFixed(2)}</td>
+      <td class="${
+        lowStock || noStock ? "stock-warning" : ""
+      }" style="font-weight:700;">
+        ${item.stock} ${lowStock ? "⚠️" : ""} ${noStock ? "❌" : ""}
+      </td>
+      <td>
+        <button class="edit-btn" onclick="openEditModal(${
+          item.id
+        })">Edit</button>
+        <button class="delete-btn" onclick="removeItem(${
+          item.id
+        })">Archived</button>
+      </td>
+    `;
     table.appendChild(row);
   });
 }
@@ -565,6 +602,27 @@ function filterProducts(category, btn) {
   searchProducts();
 }
 
+// search inventory
+function handleSearch(input) {
+  const searchText = input.value.toLowerCase();
+
+  if (input.id === "search_box") {
+    searchProductsByName(searchText);
+  }
+
+  if (input.id === "archived_search_box") {
+    searchArchivedByName(searchText);
+  }
+
+  if (input.id === "search_inventory_name") {
+    searchInventoryByName(searchText);
+  }
+
+  if (input.id === "search_product_name") {
+    searchProductByName(searchText);
+  }
+}
+
 function searchProducts() {
   const productArea = document.getElementById("products_list");
   productArea.innerHTML = "";
@@ -672,6 +730,7 @@ function changeQuantity(itemId, delta) {
 }
 
 function refreshCart() {
+  document.getElementById("checkout_btn").textContent = "Checkout Order";
   const cartArea = document.getElementById("order_items");
   const totalDisplay = document.getElementById("order_total");
   const cashInput = document.getElementById("cash_received");
@@ -789,6 +848,9 @@ function processCheckout() {
     .then((response) => response.json())
     .then((data) => {
       if (data.success) {
+        const checkoutBtn = document.getElementById("checkout_btn");
+        checkoutBtn.disabled = true;
+        checkoutBtn.textContent = "Checked Out...";
         // Update local UI only after successful database save
         for (const orderItem of orderList) {
           const product = findItem(orderItem.id);
@@ -803,7 +865,7 @@ function processCheckout() {
             "Order saved to database successfully!",
             "alert-success"
           );
-
+          fetchSales();
           if (loggedInUser.role === "Staff" || loggedInUser.role === "Owner") {
             displayReceipt(orderList, grandTotal, paymentType);
           }
@@ -904,6 +966,50 @@ window.onclick = function (e) {
 
 //Archived Modal
 
+//archived filter by Name
+function searchArchivedByName(searchText) {
+  const table = document.getElementById("archived_list");
+  table.innerHTML = "";
+
+  let filtered = archivedItems.filter((item) =>
+    item.name.toLowerCase().includes(searchText)
+  );
+
+  if (archivedSelectedCategory !== "") {
+    filtered = filtered.filter(
+      (item) => item.category === archivedSelectedCategory
+    );
+  }
+
+  if (filtered.length === 0) {
+    table.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align:center; padding:20px; color:#888;">
+          No archived items found
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  filtered.forEach((item) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${item.name}</td>
+      <td>${item.category}</td>
+      <td>₱${parseFloat(item.price).toFixed(2)}</td>
+      <td>${item.deleted_at}</td>
+      <td>
+        <button class="delete-btn" onclick="restoreItem(${item.id})">
+          Restore
+        </button>
+      </td>
+    `;
+    table.appendChild(row);
+  });
+}
+
+//archived filter by Category
 function applyArchivedCategoryFilter() {
   archivedSelectedCategory = document.getElementById(
     "archived_category_filter"
@@ -1107,3 +1213,352 @@ document.addEventListener("DOMContentLoaded", () => {
     cashInput.value = "";
   }
 });
+
+// bar graph data
+let salesChart;
+let allSales = [];
+
+// Fetch sales from PHP
+function fetchSales() {
+  fetch("actions/get_sales.php") // 👈 ito yung PHP mo
+    .then((res) => res.json())
+    .then((data) => {
+      allSales = data;
+      updateSalesChart(); // initial load
+    })
+    .catch((err) => console.error(err));
+}
+
+// Update chart based on dropdown
+function updateSalesChart() {
+  const filter = document.getElementById("salesFilter").value;
+  const filteredData = filterSalesData(filter);
+
+  const labels = filteredData.map((item) => item.label);
+  const totals = filteredData.map((item) => item.total);
+
+  // 🟢 Create ONCE
+  if (!salesChart) {
+    const ctx = document.getElementById("salesChart").getContext("2d");
+
+    salesChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Sales (₱)",
+            data: totals,
+            backgroundColor: "#000",
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true },
+        },
+      },
+    });
+
+    return;
+  }
+
+  // 🟢 Update only (NO destroy)
+  salesChart.data.labels = labels;
+  salesChart.data.datasets[0].data = totals;
+  salesChart.update();
+}
+
+function toPHDate(dateString) {
+  return new Date(
+    new Date(dateString).toLocaleString("en-US", {
+      timeZone: "Asia/Manila",
+    })
+  );
+}
+
+// Filter logic
+function filterSalesData(type) {
+  const now = toPHDate(new Date());
+  let map = {};
+
+  allSales.forEach((sale) => {
+    const saleDate = toPHDate(sale.date_time);
+    let key = "";
+    let order = 0;
+
+    // 🕒 TODAY → hourly (PH time)
+    if (type === "day") {
+      if (saleDate.toDateString() !== now.toDateString()) return;
+
+      const hour = saleDate.getHours(); // PH hour
+      const displayHour = hour % 12 || 12;
+      const suffix = hour < 12 ? "AM" : "PM";
+
+      key = `${displayHour}${suffix}`;
+      order = hour; // 0–23 (correct order)
+    }
+
+    // 📅 WEEK → Sun–Sat (PH)
+    if (type === "week") {
+      const start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+
+      if (saleDate < start) return;
+
+      order = saleDate.getDay(); // 0–6
+      key = saleDate.toLocaleDateString("en-PH", {
+        weekday: "short",
+        timeZone: "Asia/Manila",
+      });
+    }
+
+    // 🗓️ MONTH → Week 1–4 (PH)
+    if (type === "month") {
+      if (
+        saleDate.getMonth() !== now.getMonth() ||
+        saleDate.getFullYear() !== now.getFullYear()
+      )
+        return;
+
+      order = Math.ceil(saleDate.getDate() / 7);
+      key = `Week ${order}`;
+    }
+
+    // 📆 YEAR → Jan–Dec (PH)
+    if (type === "year") {
+      if (saleDate.getFullYear() !== now.getFullYear()) return;
+
+      order = saleDate.getMonth(); // 0–11
+      key = saleDate.toLocaleDateString("en-PH", {
+        month: "short",
+        timeZone: "Asia/Manila",
+      });
+    }
+
+    if (!map[key]) {
+      map[key] = { label: key, total: 0, order };
+    }
+
+    map[key].total += sale.total;
+  });
+
+  // 🔥 OLDEST → LATEST (correct order)
+  return Object.values(map)
+    .sort((a, b) => a.order - b.order)
+    .map((item) => ({
+      label: item.label,
+      total: item.total,
+    }));
+}
+
+// Load on page open
+document.addEventListener("DOMContentLoaded", fetchSales);
+
+// sales report
+function show_daily_Sales() {
+  document.getElementById("salesDiv").style.display = "block";
+  document.getElementById("productDiv").style.display = "none";
+}
+
+function show_product_Sales() {
+  document.getElementById("salesDiv").style.display = "none";
+  document.getElementById("productDiv").style.display = "block";
+
+  fetch("actions/get_inventory.php")
+    .then((response) => response.json())
+    .then((data) => {
+      loadProductReports(data);
+    })
+    .catch((error) => {
+      console.error("Error fetching deleted items:", error);
+    });
+}
+
+//Product Reports
+// filter product by name
+let productSearchText = "";
+
+function searchProductByName(text) {
+  productSearchText = text;
+  loadProductReports();
+}
+
+//product reports filter by Category
+function applyProductFilter() {
+  productSelectedCategory = document.getElementById("product_filter").value;
+
+  loadProductReports();
+}
+
+function loadProductReports() {
+  if (!loggedInUser || loggedInUser.role !== "Owner") return;
+
+  const table = document.getElementById("product_report");
+  table.innerHTML = "";
+
+  let allItems = allInventoryItems;
+
+  if (allItems && allItems.length > 0) {
+    allItems = [...allItems].sort((a, b) => b.id - a.id);
+  }
+
+  // ✅ FILTER BY CATEGORY
+  if (productSelectedCategory !== "") {
+    allItems = allItems.filter(
+      (item) => item.category === productSelectedCategory
+    );
+  }
+
+  // ✅ FILTER BY NAME (SEARCH)
+  if (productSearchText !== "") {
+    allItems = allItems.filter((item) =>
+      item.name.toLowerCase().includes(productSearchText)
+    );
+  }
+
+  if (allItems.length === 0) {
+    table.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align:center; padding:20px; color:#888;">
+          No inventory data available
+        </td>
+       </tr>
+    `;
+    return;
+  }
+
+  allItems.forEach((item) => {
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td>${item.name}</td>
+      <td>${item.category}</td>
+      <td>₱${item.price.toFixed(2)}</td>
+      <td>
+        <button class="edit-btn" onclick="showProductReportModal(${
+          item.id
+        })">Sales</button> 
+      </td>
+    `;
+    table.appendChild(row);
+  });
+}
+
+function openSalesReportModal() {
+  document.getElementById("product-sales-modal").classList.add("show");
+}
+
+// Modal for product report(Sales and sold)
+function showProductReportModal(itemId) {
+  document.getElementById("popup_titles").textContent = "Product Sales Report";
+  document.getElementById("product_report_modal").classList.add("show");
+
+  // 📋 TABLE DATA (summary)
+  fetch("actions/get_product_report.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_id: itemId }),
+  })
+    .then((res) => res.json())
+    .then((data) => loadProductStatus(data))
+    .catch((err) => console.error("Table error:", err));
+
+  // 📈 LINE CHART DATA (trend)
+  fetch("actions/get_product_chart.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_id: itemId }),
+  })
+    .then((res) => res.json())
+    .then((data) => renderProductLineChart(data))
+    .catch((err) => console.error("Chart error:", err));
+}
+
+function hideModalProductReport() {
+  document.getElementById("product_report_modal").classList.remove("show");
+}
+// populate product report
+function loadProductStatus(data) {
+  if (!loggedInUser || loggedInUser.role !== "Owner") return;
+
+  const table = document.getElementById("product-reports");
+
+  if (!data || data.length === 0) {
+    hideModalProductReport();
+    Swal.fire({
+      text: "No Available Data!",
+      icon: "error",
+      confirmButtonColor: "#070000ff",
+      timer: 2500,
+    });
+  }
+
+  table.innerHTML = data
+    .map(
+      (r) => `
+  <tr>
+    <td>${r.item_name}</td>
+    <td>${r.price}</td>
+    <td>₱${Number(r.total_sales).toFixed(2)}</td>
+    <td>${r.sold_qty}</td>
+    <td>Dec-2025</td>
+  </tr>
+`
+    )
+    .join("");
+}
+
+function renderProductLineChart(data) {
+  const labels = data.map((r) => formatShortDate(r.sale_day));
+  const sales = data.map((r) => Number(r.total_sales));
+
+  const ctx = document.getElementById("productLineChart").getContext("2d");
+
+  // create once
+  if (!productLineChart) {
+    productLineChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Daily Sales (₱)",
+            data: sales,
+            borderColor: "#000",
+            backgroundColor: "rgba(241, 236, 236, 0.15)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+        },
+        scales: {
+          y: { beginAtZero: true },
+        },
+      },
+    });
+    return;
+  }
+
+  // update only
+  productLineChart.data.labels = labels;
+  productLineChart.data.datasets[0].data = sales;
+  productLineChart.update();
+}
+
+function formatShortDate(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
