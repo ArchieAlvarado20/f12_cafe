@@ -188,7 +188,7 @@
                             </table> 
                     </div>
                         
-                        <div class="table-wrapper" id="productDiv" style="display: none;">
+                        <div id="productDiv" style="display: none;">
                              <div style="display: flex;">
                                 <h2 style="margin-bottom: 1rem;margin-right:1rem">Product Reports: </h2>
                             </div>
@@ -215,17 +215,20 @@
                                         <option value="Silog Meals">Silog Meals</option>
                                     </select>
                                 </div>
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Item Name</th>
-                                        <th>Category</th>
-                                        <th>Price (₱)</th>
-                                        <th>Reports</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="product_report"></tbody>
-                            </table> 
+                                <div class="table-wrapper">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Item Name</th>
+                                                <th>Category</th>
+                                                <th>Price (₱)</th>
+                                                <th>Reports</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="product_report"></tbody>
+                                    </table> 
+                                </div>
+                            
                     </div>
             </div>
                         
